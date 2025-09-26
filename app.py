@@ -4,6 +4,7 @@ import requests
 import time
 import psycopg2
 import os
+import threading
 
 app = Flask(__name__, static_folder="static")
 CORS(app)
@@ -27,7 +28,7 @@ def cache_get(key):
 def cache_set(key, data, ttl=TTL_SECONDS):
     CACHE[key] = (time.time() + ttl, data)
 
-# <-- FIXED: correct GraphQL query (no stray spaces/typos) -->
+# GraphQL query
 USER_PROFILE_QUERY = """
 query getUserProfile($username: String!) {
   matchedUser(username: $username) {
@@ -60,32 +61,25 @@ def fetch_leetcode(username: str, retries=2, timeout=30):
     for attempt in range(retries + 1):
         try:
             r = requests.post(LEETCODE_GRAPHQL, json=payload, headers=headers, timeout=timeout)
-            # If LeetCode returns non-JSON HTML, raise for status to trigger exception
             r.raise_for_status()
-            # Try parse JSON; if parsing fails we'll raise
             return r.json()
         except requests.exceptions.HTTPError as http_err:
             status = getattr(http_err.response, "status_code", None)
-            # If 4xx/5xx, don't retry except on 429 or 499 or 5xx
             if status in (429, 499) or (status and 500 <= status < 600):
-                # short backoff then retry
                 if attempt < retries:
                     time.sleep(1 + attempt * 1)
                     continue
-            # return the full error (so transform_response sees it)
             raise
         except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
             if attempt < retries:
                 time.sleep(1 + attempt * 0.5)
                 continue
             raise
-    # if all retries exhausted, raise last exception
     raise RuntimeError("Failed to fetch leetcode profile after retries")
 
 def transform_response(data):
     matched = (data or {}).get("data", {}).get("matchedUser")
     if not matched:
-        # try to extract an error message if present
         err_msg = (data or {}).get("errors")
         if err_msg:
             return {"ok": False, "error": f"GraphQL errors: {err_msg}"}
@@ -196,14 +190,13 @@ def fetch_or_update_user(username):
     except requests.Timeout:
         return {"ok": False, "error": "LeetCode API timed out."}
     except requests.RequestException as e:
-        # include status code/text to help debugging (e.g. 499)
         status = getattr(e.response, "status_code", None) if hasattr(e, "response") else None
         text = getattr(e.response, "text", None) if hasattr(e, "response") else None
         return {"ok": False, "error": f"Network error: {e} (status={status}) body={text}"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
-# ---------- ROUTES ---------- #
+# ---------- ADMIN ROUTES ---------- #
 @app.route("/admin/upload", methods=["POST"])
 def admin_upload():
     text = request.form.get("usernames", "").strip()
@@ -213,14 +206,11 @@ def admin_upload():
 
     results = {"success": [], "errors": []}
     for username in usernames[:50]:
-        if not username:
-            continue
         stats = fetch_or_update_user(username)
         if stats.get("ok"):
             results["success"].append(username)
         else:
             results["errors"].append(f"{username}: {stats.get('error')}")
-        # small delay to reduce chance of being rate-limited
         time.sleep(0.8)
     return jsonify(results)
 
@@ -233,49 +223,68 @@ def admin_delete(username):
     conn.commit()
     cursor.close()
     conn.close()
-
-    key = f"lc:{username.lower()}"
-    CACHE.pop(key, None)
-
+    CACHE.pop(f"lc:{username.lower()}", None)
     if deleted:
         return jsonify({"ok": True, "message": f"User '{username}' deleted successfully."})
     else:
         return jsonify({"ok": False, "error": f"User '{username}' not found."}), 404
-    
+
 @app.route("/admin/delete_all", methods=["DELETE"])
 def admin_delete_all():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         cursor.execute("DELETE FROM leetcode_users")
-        # rowcount may be unreliable in psycopg2 after DELETE without RETURNING
         deleted_count = cursor.rowcount if cursor.rowcount is not None else 0
         conn.commit()
         cursor.close()
         conn.close()
-
-        # Safely clear cache keys
         for key in list(CACHE.keys()):
             if key.startswith("lc:"):
                 CACHE.pop(key, None)
-
-        return jsonify({
-            "ok": True,
-            "message": f"All users deleted successfully. {deleted_count} records removed."
-        })
+        return jsonify({"ok": True, "message": f"All users deleted successfully. {deleted_count} records removed."})
     except Exception as e:
         app.logger.error("Failed to delete all users: %s", e)
-        return jsonify({"ok": False, "error": f"Failed to delete all users: {str(e)}"}), 500
+        return jsonify({"ok": False, "error": str(e)}), 500
 
+# ---------- REFRESH LOGIC ---------- #
+_refresh_lock = threading.Lock()
 
+def refresh_all_users_once():
+    """Refresh all users sequentially from DB"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT username FROM leetcode_users ORDER BY total DESC")
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    for uname in [r[0] for r in rows]:
+        try:
+            CACHE.pop(f"lc:{uname.lower()}", None)
+            fetch_or_update_user(uname)
+            time.sleep(0.5)
+        except Exception as e:
+            app.logger.warning("Refresh failed for %s: %s", uname, e)
+
+@app.route("/admin/refresh_now", methods=["POST"])
+def admin_refresh_now():
+    """Trigger background refresh of ALL users"""
+    def _run():
+        with _refresh_lock:
+            try:
+                refresh_all_users_once()
+                app.logger.info("Manual refresh completed.")
+            except Exception as e:
+                app.logger.error("Manual refresh failed: %s", e)
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    return jsonify({"ok": True, "message": "Refresh started"}), 202
+
+# ---------- API ROUTES ---------- #
 @app.route("/api/users")
 def api_users():
-    """
-    Returns paginated users. If ?live=1 (or live=true) is present the server will
-    attempt to re-fetch latest stats from LeetCode for the users on THIS PAGE
-    before returning results. This keeps behavior backward-compatible while
-    allowing 'real-time' updates on-demand.
-    """
     try:
         page = int(request.args.get("page", 1))
         per_page = int(request.args.get("per_page", 12))
@@ -284,12 +293,9 @@ def api_users():
 
         conn = get_db_connection()
         cursor = conn.cursor()
-
-        # total count
         cursor.execute("SELECT COUNT(*) FROM leetcode_users")
         total = cursor.fetchone()[0]
 
-        # If live refresh requested, we first select the usernames for this page
         if refresh_live:
             cursor.execute("""
                 SELECT username FROM leetcode_users
@@ -298,31 +304,18 @@ def api_users():
                 LIMIT %s OFFSET %s
             """, (per_page, offset))
             rows = cursor.fetchall()
-            usernames_to_refresh = [r[0] for r in rows]
-
-            # Refresh sequentially to avoid hammering LeetCode
-            # small delay and max limit protection
-            MAX_REFRESH = 10  # safety cap
-            delay_seconds = 0.5
-            for i, uname in enumerate(usernames_to_refresh[:MAX_REFRESH]):
+            for uname in [r[0] for r in rows[:10]]:
                 try:
-                    # force fetch latest and update DB
-                    # bypass cache by temporarily popping cache key
                     CACHE.pop(f"lc:{uname.lower()}", None)
-                    stats = fetch_or_update_user(uname)
-                    # small sleep between requests to be polite and reduce rate-limit risk
-                    time.sleep(delay_seconds)
+                    fetch_or_update_user(uname)
+                    time.sleep(0.5)
                 except Exception as e:
                     app.logger.warning("Live refresh failed for %s: %s", uname, e)
-                    # continue refreshing other users
-
-            # Close and reopen a new cursor/connection to re-query updated values
             cursor.close()
             conn.close()
             conn = get_db_connection()
             cursor = conn.cursor()
 
-        # get the paginated (possibly freshly updated) rows
         cursor.execute("""
             SELECT username, ranking, reputation, easy, medium, hard, total, last_updated
             FROM leetcode_users
@@ -343,7 +336,6 @@ def api_users():
                 "total": row[6],
                 "last_updated": row[7].isoformat() if row[7] else None,
             })
-
         cursor.close()
         conn.close()
 
@@ -358,7 +350,6 @@ def api_users():
     except Exception as e:
         app.logger.exception("api_users error")
         return jsonify({"ok": False, "error": str(e)}), 500
-
 
 @app.route("/debug/db")
 def debug_db():
@@ -393,4 +384,3 @@ if __name__ == "__main__":
         print("⚠️ init_db() failed:", e)
     print("🚀 Server running at http://127.0.0.1:5000")
     app.run(debug=True)
-
