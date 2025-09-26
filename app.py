@@ -372,6 +372,10 @@ def index():
 def admin():
     return send_from_directory("static", "admin.html")
 
+@app.route("/login")
+def login():
+    return send_from_directory("static", "login.html")
+
 @app.errorhandler(Exception)
 def handle_exception(e):
     return jsonify({"ok": False, "error": str(e)}), 500
@@ -384,3 +388,4 @@ if __name__ == "__main__":
         print("⚠️ init_db() failed:", e)
     print("🚀 Server running at http://127.0.0.1:5000")
     app.run(debug=True)
+
