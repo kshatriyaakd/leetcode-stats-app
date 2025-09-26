@@ -302,8 +302,8 @@ def api_users():
 
             # Refresh sequentially to avoid hammering LeetCode
             # small delay and max limit protection
-            MAX_REFRESH = 40  # safety cap
-            delay_seconds = 0.6
+            MAX_REFRESH = 10  # safety cap
+            delay_seconds = 0.5
             for i, uname in enumerate(usernames_to_refresh[:MAX_REFRESH]):
                 try:
                     # force fetch latest and update DB
@@ -393,3 +393,4 @@ if __name__ == "__main__":
         print("⚠️ init_db() failed:", e)
     print("🚀 Server running at http://127.0.0.1:5000")
     app.run(debug=True)
+
