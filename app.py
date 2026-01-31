@@ -344,6 +344,17 @@ def api_users():
                 level_color = "green"
             # ---------------------------------------
 
+            # -------- STRENGTH / WEAKNESS LOGIC --------
+            scores_map = {
+                "Easy": easy,
+                "Medium": medium,
+                "Hard": hard
+            }
+
+            strength = max(scores_map, key=scores_map.get)
+            weakness = min(scores_map, key=scores_map.get)
+            # -------------------------------------------
+
             users.append({
                 "username": row[0],
                 "ranking": row[1],
@@ -355,6 +366,8 @@ def api_users():
                 "placement_score": placement_score,
                 "placement_level": placement_level,
                 "placement_color": level_color,
+                "strength": strength,
+                "weakness": weakness,
                 "last_updated": row[7].isoformat() if row[7] else None,
             })
 
@@ -373,6 +386,7 @@ def api_users():
     except Exception as e:
         app.logger.exception("api_users error")
         return jsonify({"ok": False, "error": str(e)}), 500
+
 
 
 @app.route("/debug/db")
@@ -412,4 +426,3 @@ if __name__ == "__main__":
         print("⚠️ init_db() failed:", e)
     print("🚀 Server running at http://127.0.0.1:5000")
     app.run(debug=True)
-

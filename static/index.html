@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -49,9 +49,11 @@
         );
 
         /* Shadows */
-        --shadow-lg: 0 10px 15px -3px hsl(240, 10%, 3.9%, 0.1),
+        --shadow-lg:
+          0 10px 15px -3px hsl(240, 10%, 3.9%, 0.1),
           0 4px 6px -4px hsl(240, 10%, 3.9%, 0.1);
-        --shadow-xl: 0 20px 25px -5px hsl(240, 10%, 3.9%, 0.1),
+        --shadow-xl:
+          0 20px 25px -5px hsl(240, 10%, 3.9%, 0.1),
           0 8px 10px -6px hsl(240, 10%, 3.9%, 0.1);
         --shadow-glow: 0 0 20px hsl(258, 90%, 66%, 0.3);
 
@@ -68,7 +70,8 @@
       }
 
       body {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
           "Helvetica Neue", Arial, sans-serif;
         background: var(--background);
         color: var(--foreground);
@@ -99,7 +102,8 @@
         left: 0;
         right: 0;
         bottom: 0;
-        background: radial-gradient(
+        background:
+          radial-gradient(
             circle at 30% 20%,
             hsl(258, 90%, 66%, 0.1),
             transparent 50%
@@ -258,7 +262,9 @@
         color: #743df5; /* purple, matches your button theme */
         font-weight: 600; /* make it stand out */
         text-decoration: none; /* remove default underline */
-        transition: color 0.2s ease, text-decoration 0.2s ease;
+        transition:
+          color 0.2s ease,
+          text-decoration 0.2s ease;
       }
 
       .username-link:hover {
@@ -615,7 +621,14 @@
           </p>
 
           <!-- Admin / Refresh buttons: added without touching CSS rules -->
-          <div style="display: inline-flex; gap: 0.5rem; align-items: center; margin-top: 1rem;">
+          <div
+            style="
+              display: inline-flex;
+              gap: 0.5rem;
+              align-items: center;
+              margin-top: 1rem;
+            "
+          >
             <a href="/login" class="admin-btn" title="Upload users (admin)">
               <svg
                 width="16"
@@ -632,8 +645,19 @@
             </a>
 
             <!-- Refresh current (live) page — same behavior as admin's "Refresh List (Current Page)" -->
-            <button class="admin-btn" onclick="refreshCurrentPage()" title="Refresh current visible page">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <button
+              class="admin-btn"
+              onclick="refreshCurrentPage()"
+              title="Refresh current visible page"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
                 <polyline points="23,4 23,10 17,10"></polyline>
                 <path d="M20.49,15a9,9,0,1,1-2.12-9.36L23,10"></path>
               </svg>
@@ -641,8 +665,17 @@
             </button>
 
             <!-- Refresh all users now — triggers backend endpoint /admin/refresh_now (POST) -->
-            <button class="retry-btn" onclick="refreshNow()" title="Refresh all users now">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <button
+              class="retry-btn"
+              onclick="refreshNow()"
+              title="Refresh all users now"
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
                 <path d="M12 2v4m0 12v4m8-8h-4M4 12H0" />
               </svg>
               Refresh All Users Now
@@ -717,7 +750,7 @@
         );
         color: #9e84ff;
         padding: 40px 20px;
-        font-family: 'Poppins', sans-serif;
+        font-family: &quot;Poppins&quot;, sans-serif;
         text-align: center;
       "
     >
@@ -801,11 +834,11 @@
 
       // Create user card - updated so only username text is clickable
       function createUserCard(user, index) {
-  const profileUrl = `https://leetcode.com/${encodeURIComponent(
-    user.username
-  )}/`;
+        const profileUrl = `https://leetcode.com/${encodeURIComponent(
+          user.username,
+        )}/`;
 
-  return `
+        return `
   <div class="stats-card stagger-${(index % 4) + 1}">
     <div class="card-header">
       <h3 class="card-title">
@@ -823,6 +856,7 @@
           user.ranking ? `#${user.ranking.toLocaleString()}` : "N/A"
         }</span>
       </div>
+
       <div class="stat-row">
         <span class="stat-label">Reputation:</span>
         <span class="stat-value">${
@@ -830,16 +864,28 @@
         }</span>
       </div>
 
-      <!-- NEW: Placement Score -->
+      <!-- Placement Score -->
       <div class="stat-row">
         <span class="stat-label">Placement Score:</span>
         <span class="stat-value">${user.placement_score ?? 0}</span>
       </div>
+
       <div class="stat-row">
         <span class="stat-label">Status:</span>
-        <span class="stat-value" style="color:${user.placement_color || 'gray'}">
+        <span class="stat-value" style="color:${user.placement_color || "gray"}">
           ${user.placement_level || "N/A"}
         </span>
+      </div>
+
+      <!-- NEW: Strength / Weakness -->
+      <div class="stat-row">
+        <span class="stat-label">Strength:</span>
+        <span class="stat-value">💪 ${user.strength || "N/A"}</span>
+      </div>
+
+      <div class="stat-row">
+        <span class="stat-label">Weakness:</span>
+        <span class="stat-value">⚠️ ${user.weakness || "N/A"}</span>
       </div>
     </div>
 
@@ -862,7 +908,7 @@
       </div>
     </div>
 
-    <!-- NEW: Placement Progress Bar -->
+    <!-- Placement Progress Bar -->
     <div style="margin-top:12px;">
       <div style="
         background:#222;
@@ -873,7 +919,7 @@
         <div style="
           width:${Math.min((user.placement_score || 0) / 10, 100)}%;
           height:6px;
-          background:${user.placement_color || '#555'};
+          background:${user.placement_color || "#555"};
           transition:width 0.4s ease;
         "></div>
       </div>
@@ -882,8 +928,7 @@
     <div class="progress-bar"></div>
   </div>
   `;
-}
-
+      }
 
       // Load users from API (standard)
       async function loadUsers(page = 1) {
@@ -892,7 +937,7 @@
 
         try {
           const response = await fetch(
-            `/api/users?page=${page}&per_page=${perPage}`
+            `/api/users?page=${page}&per_page=${perPage}`,
           );
 
           if (!response.ok) {
@@ -910,7 +955,7 @@
         } catch (err) {
           console.error("Error loading users:", err);
           showError(
-            "Failed to load users. Please check your connection and try again."
+            "Failed to load users. Please check your connection and try again.",
           );
         }
       }
@@ -1024,7 +1069,7 @@
 
         try {
           const res = await fetch(
-            `/api/users?page=${currentPage}&per_page=${perPage}&live=1`
+            `/api/users?page=${currentPage}&per_page=${perPage}&live=1`,
           );
 
           if (!res.ok) {
@@ -1070,7 +1115,9 @@
             // try to reload users after a short delay to show updated state
             setTimeout(() => loadUsers(currentPage), 5000);
           } else {
-            alert("❌ Failed to start refresh: " + (data.error || "Unknown error"));
+            alert(
+              "❌ Failed to start refresh: " + (data.error || "Unknown error"),
+            );
             // restore by loading current page normally
             loadUsers(currentPage);
           }
