@@ -380,6 +380,8 @@ def get_activity_status(last_active_date):
         }
 
 # ---------- API ROUTES ---------- #
+
+
 @app.route("/debug/users_count")
 def debug_users_count():
     conn = get_db_connection()
@@ -389,7 +391,6 @@ def debug_users_count():
     cur.close()
     conn.close()
     return jsonify({"total_users": count})
-
 
 
 @app.route("/api/users")
@@ -411,7 +412,6 @@ def api_users():
     SELECT username, ranking, reputation, easy, medium, hard, total,
            last_updated, current_streak, last_active_date
     FROM leetcode_users
-    WHERE 1=1
     ORDER BY total DESC
     LIMIT %s OFFSET %s
 """, (per_page, offset))
@@ -434,7 +434,6 @@ def api_users():
     SELECT username, ranking, reputation, easy, medium, hard, total,
            last_updated, current_streak, last_active_date
     FROM leetcode_users
-    WHERE 1=1
     ORDER BY total DESC
     LIMIT %s OFFSET %s
 """, (per_page, offset))
