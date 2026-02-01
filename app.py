@@ -380,6 +380,16 @@ def get_activity_status(last_active_date):
         }
 
 # ---------- API ROUTES ---------- #
+@app.route("/debug/users_count")
+def debug_users_count():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM leetcode_users")
+    count = cur.fetchone()[0]
+    cur.close()
+    conn.close()
+    return jsonify({"total_users": count})
+
 
 
 @app.route("/api/users")
