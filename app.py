@@ -450,6 +450,19 @@ def api_users():
                 level_color = "green"
 
             activity = get_activity_status(row[9])
+            # ---- Last solved text (UX) ----
+            if row[9] is None:
+                last_solved_text = "Never"
+            else:
+                days_ago = (date.today() - row[9]).days
+                if days_ago == 0:
+                    last_solved_text = "Today"
+                elif days_ago == 1:
+                    last_solved_text = "Yesterday"
+                else:
+                    last_solved_text = f"{days_ago} days ago"
+            # --------------------------------
+
 
             users.append({
                 "username": row[0],
@@ -469,6 +482,7 @@ def api_users():
                 "activity_status": activity["label"],
                 "activity_color": activity["color"],
                 "activity_icon": activity["icon"],
+                "last_solved_text": last_solved_text,
 
                 # timestamps
                 "last_updated": row[7].isoformat() if row[7] else None,
