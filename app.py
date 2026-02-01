@@ -17,6 +17,7 @@ LEETCODE_GRAPHQL = "https://leetcode.com/graphql"
 CACHE = {}
 TTL_SECONDS = 600  # 10 min
 
+
 def cache_get(key):
     item = CACHE.get(key)
     if not item:
@@ -27,8 +28,10 @@ def cache_get(key):
         return None
     return data
 
+
 def cache_set(key, data, ttl=TTL_SECONDS):
     CACHE[key] = (time.time() + ttl, data)
+
 
 # GraphQL query
 USER_PROFILE_QUERY = """
@@ -50,6 +53,8 @@ query getUserProfile($username: String!) {
 """
 
 # improved fetch with retries and better headers
+
+
 def fetch_leetcode(username: str, retries=2, timeout=30):
     headers = {
         "Content-Type": "application/json",
@@ -58,11 +63,13 @@ def fetch_leetcode(username: str, retries=2, timeout=30):
         "Accept": "application/json",
     }
 
-    payload = {"query": USER_PROFILE_QUERY, "variables": {"username": username}}
+    payload = {"query": USER_PROFILE_QUERY,
+               "variables": {"username": username}}
 
     for attempt in range(retries + 1):
         try:
-            r = requests.post(LEETCODE_GRAPHQL, json=payload, headers=headers, timeout=timeout)
+            r = requests.post(LEETCODE_GRAPHQL, json=payload,
+                              headers=headers, timeout=timeout)
             r.raise_for_status()
             return r.json()
         except requests.exceptions.HTTPError as http_err:
@@ -79,6 +86,7 @@ def fetch_leetcode(username: str, retries=2, timeout=30):
             raise
     raise RuntimeError("Failed to fetch leetcode profile after retries")
 
+
 def transform_response(data):
     matched = (data or {}).get("data", {}).get("matchedUser")
     if not matched:
@@ -89,7 +97,8 @@ def transform_response(data):
 
     profile = matched.get("profile") or {}
     ac_list = matched.get("submitStats", {}).get("acSubmissionNum") or []
-    solved = {item.get("difficulty"): item.get("count", 0) for item in ac_list if "difficulty" in item}
+    solved = {item.get("difficulty"): item.get("count", 0)
+              for item in ac_list if "difficulty" in item}
 
     return {
         "ok": True,
@@ -105,6 +114,8 @@ def transform_response(data):
     }
 
 # ---------- DATABASE SETUP (PostgreSQL) ---------- #
+
+
 def get_db_connection():
     url = os.environ.get("DATABASE_URL")
     if not url:
@@ -117,6 +128,7 @@ def get_db_connection():
         return psycopg2.connect(url, sslmode="require")
     except Exception:
         return psycopg2.connect(url)
+
 
 def init_db():
     conn = get_db_connection()
@@ -138,13 +150,17 @@ def init_db():
     cursor.close()
     conn.close()
 
+
 def ensure_db():
     try:
         init_db()
         app.logger.info("Database initialized successfully.")
     except Exception as e:
         app.logger.error("Failed to initialize DB: %s", e)
+
+
 ensure_db()
+
 
 def store_user_stats(username, stats):
     conn = get_db_connection()
@@ -231,13 +247,17 @@ def fetch_or_update_user(username):
     except requests.Timeout:
         return {"ok": False, "error": "LeetCode API timed out."}
     except requests.RequestException as e:
-        status = getattr(e.response, "status_code", None) if hasattr(e, "response") else None
-        text = getattr(e.response, "text", None) if hasattr(e, "response") else None
+        status = getattr(e.response, "status_code", None) if hasattr(
+            e, "response") else None
+        text = getattr(e.response, "text", None) if hasattr(
+            e, "response") else None
         return {"ok": False, "error": f"Network error: {e} (status={status}) body={text}"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
 # ---------- ADMIN ROUTES ---------- #
+
+
 @app.route("/admin/upload", methods=["POST"])
 def admin_upload():
     text = request.form.get("usernames", "").strip()
@@ -255,11 +275,13 @@ def admin_upload():
         time.sleep(0.8)
     return jsonify(results)
 
+
 @app.route("/admin/delete/<username>", methods=["DELETE"])
 def admin_delete(username):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM leetcode_users WHERE username = %s", (username,))
+    cursor.execute(
+        "DELETE FROM leetcode_users WHERE username = %s", (username,))
     deleted = cursor.rowcount > 0
     conn.commit()
     cursor.close()
@@ -269,6 +291,7 @@ def admin_delete(username):
         return jsonify({"ok": True, "message": f"User '{username}' deleted successfully."})
     else:
         return jsonify({"ok": False, "error": f"User '{username}' not found."}), 404
+
 
 @app.route("/admin/delete_all", methods=["DELETE"])
 def admin_delete_all():
@@ -288,8 +311,10 @@ def admin_delete_all():
         app.logger.error("Failed to delete all users: %s", e)
         return jsonify({"ok": False, "error": str(e)}), 500
 
+
 # ---------- REFRESH LOGIC ---------- #
 _refresh_lock = threading.Lock()
+
 
 def refresh_all_users_once():
     """Refresh all users sequentially from DB"""
@@ -308,6 +333,7 @@ def refresh_all_users_once():
         except Exception as e:
             app.logger.warning("Refresh failed for %s: %s", uname, e)
 
+
 @app.route("/admin/refresh_now", methods=["POST"])
 def admin_refresh_now():
     """Trigger background refresh of ALL users"""
@@ -322,6 +348,7 @@ def admin_refresh_now():
     t = threading.Thread(target=_run, daemon=True)
     t.start()
     return jsonify({"ok": True, "message": "Refresh started"}), 202
+
 
 def get_activity_status(last_active_date):
     if not last_active_date:
@@ -353,13 +380,16 @@ def get_activity_status(last_active_date):
         }
 
 # ---------- API ROUTES ---------- #
+
+
 @app.route("/api/users")
 def api_users():
     try:
         page = int(request.args.get("page", 1))
         per_page = int(request.args.get("per_page", 12))
         offset = (page - 1) * per_page
-        refresh_live = request.args.get("live", "0").lower() in ("1", "true", "yes")
+        refresh_live = request.args.get(
+            "live", "0").lower() in ("1", "true", "yes")
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -371,7 +401,7 @@ def api_users():
     SELECT username, ranking, reputation, easy, medium, hard, total,
            last_updated, current_streak, last_active_date
     FROM leetcode_users
-    WHERE ranking IS NOT NULL
+    WHERE 1=1
     ORDER BY total DESC
     LIMIT %s OFFSET %s
 """, (per_page, offset))
@@ -383,7 +413,8 @@ def api_users():
                     fetch_or_update_user(uname)
                     time.sleep(0.5)
                 except Exception as e:
-                    app.logger.warning("Live refresh failed for %s: %s", uname, e)
+                    app.logger.warning(
+                        "Live refresh failed for %s: %s", uname, e)
             cursor.close()
             conn.close()
             conn = get_db_connection()
@@ -393,11 +424,10 @@ def api_users():
     SELECT username, ranking, reputation, easy, medium, hard, total,
            last_updated, current_streak, last_active_date
     FROM leetcode_users
-    WHERE ranking IS NOT NULL
+    WHERE 1=1
     ORDER BY total DESC
     LIMIT %s OFFSET %s
 """, (per_page, offset))
-
 
         users = []
         for row in cursor.fetchall():
@@ -423,32 +453,30 @@ def api_users():
 
         users.append({
             "username": row[0],
-    "ranking": row[1],
-    "reputation": row[2],
-    "easy": easy,
-    "medium": medium,
-    "hard": hard,
-    "total": row[6],
+            "ranking": row[1],
+            "reputation": row[2],
+            "easy": easy,
+            "medium": medium,
+            "hard": hard,
+            "total": row[6],
 
-    # placement
-    "placement_score": placement_score,
-    "placement_level": placement_level,
-    "placement_color": level_color,
+            # placement
+            "placement_score": placement_score,
+            "placement_level": placement_level,
+            "placement_color": level_color,
 
-    # activity status ✅
-    "activity_status": activity["label"],
-    "activity_color": activity["color"],
-    "activity_icon": activity["icon"],
+            # activity status ✅
+            "activity_status": activity["label"],
+            "activity_color": activity["color"],
+            "activity_icon": activity["icon"],
 
-    # timestamps
-    "last_updated": row[7].isoformat() if row[7] else None,
+            # timestamps
+            "last_updated": row[7].isoformat() if row[7] else None,
 
-    # streak
-    "streak": row[8] or 0,
-    "last_active": row[9].isoformat() if row[9] else None,
-})
-
-
+            # streak
+            "streak": row[8] or 0,
+            "last_active": row[9].isoformat() if row[9] else None,
+        })
 
         cursor.close()
         conn.close()
@@ -467,7 +495,6 @@ def api_users():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
-
 @app.route("/debug/db")
 def debug_db():
     try:
@@ -481,21 +508,26 @@ def debug_db():
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
 
+
 @app.route("/")
 def index():
     return send_from_directory("static", "index.html")
+
 
 @app.route("/admin")
 def admin():
     return send_from_directory("static", "admin.html")
 
+
 @app.route("/login")
 def login():
     return send_from_directory("static", "login.html")
 
+
 @app.errorhandler(Exception)
 def handle_exception(e):
     return jsonify({"ok": False, "error": str(e)}), 500
+
 
 if __name__ == "__main__":
     try:
