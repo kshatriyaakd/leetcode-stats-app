@@ -390,17 +390,6 @@ def api_users():
                 level_color = "green"
             # ---------------------------------------
 
-            # -------- STRENGTH / WEAKNESS LOGIC --------
-            scores_map = {
-                "Easy": easy,
-                "Medium": medium,
-                "Hard": hard
-            }
-
-            strength = max(scores_map, key=scores_map.get)
-            weakness = min(scores_map, key=scores_map.get)
-            # -------------------------------------------
-
             users.append({
     "username": row[0],
     "ranking": row[1],
@@ -414,10 +403,6 @@ def api_users():
     "placement_score": placement_score,
     "placement_level": placement_level,
     "placement_color": level_color,
-
-    # analysis
-    "strength": strength,
-    "weakness": weakness,
 
     # timestamps
     "last_updated": row[7].isoformat() if row[7] else None,
