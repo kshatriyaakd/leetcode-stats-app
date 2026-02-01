@@ -165,33 +165,37 @@ ensure_db()
 def store_user_stats(username, stats):
     conn = get_db_connection()
     cursor = conn.cursor()
+
     solved = stats.get("solved", {})
     new_total = solved.get("All", 0)
 
-    # Get previous data
+    # Fetch previous values
     cursor.execute("""
         SELECT last_total, last_active_date, current_streak
-        FROM leetcode_users WHERE username = %s
+        FROM leetcode_users
+        WHERE username = %s
     """, (username,))
     row = cursor.fetchone()
 
-    last_total = row[0] if row else 0
+    last_total = row[0] if row else None
     last_active_date = row[1] if row else None
     current_streak = row[2] if row else 0
 
     today = date.today()
 
-    # ---- STREAK LOGIC ----
-    if new_total > (last_total or 0):
+    # -------- FIXED ACTIVITY & STREAK LOGIC --------
+    if last_total is not None and new_total > last_total:
+        # user ACTUALLY solved new problems
         if last_active_date == today - timedelta(days=1):
             current_streak += 1
         else:
             current_streak = 1
         last_active_date = today
-    else:
-        if last_active_date and (today - last_active_date).days > 1:
-            current_streak = 0
-    # ----------------------
+
+    elif last_active_date and (today - last_active_date).days > 1:
+        # no activity → streak breaks
+        current_streak = 0
+    # ----------------------------------------------
 
     cursor.execute("""
         INSERT INTO leetcode_users
@@ -380,18 +384,6 @@ def get_activity_status(last_active_date):
         }
 
 # ---------- API ROUTES ---------- #
-
-
-@app.route("/debug/users_count")
-def debug_users_count():
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) FROM leetcode_users")
-    count = cur.fetchone()[0]
-    cur.close()
-    conn.close()
-    return jsonify({"total_users": count})
-
 
 @app.route("/api/users")
 def api_users():
