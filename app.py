@@ -5,6 +5,8 @@ import time
 import psycopg2
 import os
 import threading
+from datetime import date, timedelta
+
 
 app = Flask(__name__, static_folder="static")
 CORS(app)
@@ -148,18 +150,50 @@ def store_user_stats(username, stats):
     conn = get_db_connection()
     cursor = conn.cursor()
     solved = stats.get("solved", {})
+    new_total = solved.get("All", 0)
+
+    # Get previous data
     cursor.execute("""
-        INSERT INTO leetcode_users (username, ranking, reputation, easy, medium, hard, total, last_updated)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+        SELECT last_total, last_active_date, current_streak
+        FROM leetcode_users WHERE username = %s
+    """, (username,))
+    row = cursor.fetchone()
+
+    last_total = row[0] if row else 0
+    last_active_date = row[1] if row else None
+    current_streak = row[2] if row else 0
+
+    today = date.today()
+
+    # ---- STREAK LOGIC ----
+    if new_total > (last_total or 0):
+        if last_active_date == today - timedelta(days=1):
+            current_streak += 1
+        else:
+            current_streak = 1
+        last_active_date = today
+    else:
+        if last_active_date and (today - last_active_date).days > 1:
+            current_streak = 0
+    # ----------------------
+
+    cursor.execute("""
+        INSERT INTO leetcode_users
+        (username, ranking, reputation, easy, medium, hard, total,
+         last_updated, last_total, last_active_date, current_streak)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,CURRENT_TIMESTAMP,%s,%s,%s)
         ON CONFLICT (username)
-        DO UPDATE SET 
+        DO UPDATE SET
             ranking = EXCLUDED.ranking,
             reputation = EXCLUDED.reputation,
             easy = EXCLUDED.easy,
             medium = EXCLUDED.medium,
             hard = EXCLUDED.hard,
             total = EXCLUDED.total,
-            last_updated = CURRENT_TIMESTAMP
+            last_updated = CURRENT_TIMESTAMP,
+            last_total = EXCLUDED.total,
+            last_active_date = %s,
+            current_streak = %s
     """, (
         username,
         stats.get("ranking"),
@@ -167,11 +201,18 @@ def store_user_stats(username, stats):
         solved.get("Easy", 0),
         solved.get("Medium", 0),
         solved.get("Hard", 0),
-        solved.get("All", 0),
+        new_total,
+        new_total,
+        last_active_date,
+        current_streak,
+        last_active_date,
+        current_streak
     ))
+
     conn.commit()
     cursor.close()
     conn.close()
+
 
 # ---------- CORE LOGIC ---------- #
 def fetch_or_update_user(username):
