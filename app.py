@@ -439,12 +439,12 @@ def api_users():
 """, (per_page, offset))
 
         users = []
+        
         for row in cursor.fetchall():
             easy = row[3] or 0
             medium = row[4] or 0
             hard = row[5] or 0
 
-            # -------- PLACEMENT SCORE LOGIC --------
             placement_score = easy * 1 + medium * 2 + hard * 3
 
             if placement_score < 200:
@@ -456,36 +456,36 @@ def api_users():
             else:
                 placement_level = "Placement Ready"
                 level_color = "green"
-            # ---------------------------------------
 
             activity = get_activity_status(row[9])
 
-        users.append({
-            "username": row[0],
-            "ranking": row[1],
-            "reputation": row[2],
-            "easy": easy,
-            "medium": medium,
-            "hard": hard,
-            "total": row[6],
+            users.append({
+                "username": row[0],
+                "ranking": row[1],
+                "reputation": row[2],
+                "easy": easy,
+                "medium": medium,
+                "hard": hard,
+                "total": row[6],
 
-            # placement
-            "placement_score": placement_score,
-            "placement_level": placement_level,
-            "placement_color": level_color,
+                # placement
+                "placement_score": placement_score,
+                "placement_level": placement_level,
+                "placement_color": level_color,
 
-            # activity status ✅
-            "activity_status": activity["label"],
-            "activity_color": activity["color"],
-            "activity_icon": activity["icon"],
+                # activity
+                "activity_status": activity["label"],
+                "activity_color": activity["color"],
+                "activity_icon": activity["icon"],
 
-            # timestamps
-            "last_updated": row[7].isoformat() if row[7] else None,
+                # timestamps
+                "last_updated": row[7].isoformat() if row[7] else None,
 
-            # streak
-            "streak": row[8] or 0,
-            "last_active": row[9].isoformat() if row[9] else None,
-        })
+                # streak
+                "streak": row[8] or 0,
+                "last_active": row[9].isoformat() if row[9] else None,
+    })
+
 
         cursor.close()
         conn.close()
