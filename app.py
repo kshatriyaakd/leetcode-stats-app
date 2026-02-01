@@ -361,12 +361,14 @@ def api_users():
             cursor = conn.cursor()
 
         cursor.execute("""
-            SELECT username, ranking, reputation, easy, medium, hard, total, last_updated
-            FROM leetcode_users
-            WHERE ranking IS NOT NULL
-            ORDER BY total DESC
-            LIMIT %s OFFSET %s
-        """, (per_page, offset))
+    SELECT username, ranking, reputation, easy, medium, hard, total,
+           last_updated, current_streak, last_active_date
+    FROM leetcode_users
+    WHERE ranking IS NOT NULL
+    ORDER BY total DESC
+    LIMIT %s OFFSET %s
+""", (per_page, offset))
+
 
         users = []
         for row in cursor.fetchall():
@@ -407,17 +409,24 @@ def api_users():
     "medium": medium,
     "hard": hard,
     "total": row[6],
+
+    # placement
     "placement_score": placement_score,
     "placement_level": placement_level,
     "placement_color": level_color,
+
+    # analysis
     "strength": strength,
     "weakness": weakness,
+
+    # timestamps
     "last_updated": row[7].isoformat() if row[7] else None,
 
-    # ✅ NEW (IMPORTANT)
+    # ✅ NEW — streak fields (CORRECT INDEX)
     "streak": row[8] or 0,
     "last_active": row[9].isoformat() if row[9] else None,
 })
+
 
 
         cursor.close()
