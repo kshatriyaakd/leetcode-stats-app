@@ -876,6 +876,13 @@
           ${user.placement_level || "N/A"}
         </span>
       </div>
+      <div class="stat-row">
+  <span class="stat-label">Activity:</span>
+  <span class="stat-value" style="color:${user.activity_color || "gray"}">
+    ${user.activity_icon || ""} ${user.activity_status || "Dormant"}
+  </span>
+</div>
+
     </div>
     <div class="stat-row">
   <span class="stat-label">Streak:</span>

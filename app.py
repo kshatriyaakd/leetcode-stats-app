@@ -323,6 +323,35 @@ def admin_refresh_now():
     t.start()
     return jsonify({"ok": True, "message": "Refresh started"}), 202
 
+def get_activity_status(last_active_date):
+    if not last_active_date:
+        return {
+            "label": "Dormant",
+            "color": "red",
+            "icon": "🔴"
+        }
+
+    days_gap = (date.today() - last_active_date).days
+
+    if days_gap <= 1:
+        return {
+            "label": "Active",
+            "color": "green",
+            "icon": "🟢"
+        }
+    elif days_gap <= 3:
+        return {
+            "label": "Inactive",
+            "color": "orange",
+            "icon": "🟡"
+        }
+    else:
+        return {
+            "label": "Dormant",
+            "color": "red",
+            "icon": "🔴"
+        }
+
 # ---------- API ROUTES ---------- #
 @app.route("/api/users")
 def api_users():
@@ -390,8 +419,10 @@ def api_users():
                 level_color = "green"
             # ---------------------------------------
 
-            users.append({
-    "username": row[0],
+            activity = get_activity_status(row[9])
+
+        users.append({
+            "username": row[0],
     "ranking": row[1],
     "reputation": row[2],
     "easy": easy,
@@ -404,10 +435,15 @@ def api_users():
     "placement_level": placement_level,
     "placement_color": level_color,
 
+    # activity status ✅
+    "activity_status": activity["label"],
+    "activity_color": activity["color"],
+    "activity_icon": activity["icon"],
+
     # timestamps
     "last_updated": row[7].isoformat() if row[7] else None,
 
-    # ✅ NEW — streak fields (CORRECT INDEX)
+    # streak
     "streak": row[8] or 0,
     "last_active": row[9].isoformat() if row[9] else None,
 })
