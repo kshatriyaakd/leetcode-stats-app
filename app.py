@@ -339,11 +339,14 @@ def api_users():
 
         if refresh_live:
             cursor.execute("""
-                SELECT username FROM leetcode_users
-                WHERE ranking IS NOT NULL
-                ORDER BY total DESC
-                LIMIT %s OFFSET %s
-            """, (per_page, offset))
+    SELECT username, ranking, reputation, easy, medium, hard, total,
+           last_updated, current_streak, last_active_date
+    FROM leetcode_users
+    WHERE ranking IS NOT NULL
+    ORDER BY total DESC
+    LIMIT %s OFFSET %s
+""", (per_page, offset))
+
             rows = cursor.fetchall()
             for uname in [r[0] for r in rows[:10]]:
                 try:
@@ -397,20 +400,25 @@ def api_users():
             # -------------------------------------------
 
             users.append({
-                "username": row[0],
-                "ranking": row[1],
-                "reputation": row[2],
-                "easy": easy,
-                "medium": medium,
-                "hard": hard,
-                "total": row[6],
-                "placement_score": placement_score,
-                "placement_level": placement_level,
-                "placement_color": level_color,
-                "strength": strength,
-                "weakness": weakness,
-                "last_updated": row[7].isoformat() if row[7] else None,
-            })
+    "username": row[0],
+    "ranking": row[1],
+    "reputation": row[2],
+    "easy": easy,
+    "medium": medium,
+    "hard": hard,
+    "total": row[6],
+    "placement_score": placement_score,
+    "placement_level": placement_level,
+    "placement_color": level_color,
+    "strength": strength,
+    "weakness": weakness,
+    "last_updated": row[7].isoformat() if row[7] else None,
+
+    # ✅ NEW (IMPORTANT)
+    "streak": row[8] or 0,
+    "last_active": row[9].isoformat() if row[9] else None,
+})
+
 
         cursor.close()
         conn.close()
