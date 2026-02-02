@@ -5,7 +5,7 @@ import time
 import psycopg2
 import os
 import threading
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime, timezone
 
 
 app = Flask(__name__, static_folder="static")
@@ -171,15 +171,22 @@ def store_user_stats(username, stats):
 
     # Fetch previous values
     cursor.execute("""
-        SELECT last_total, last_active_date, current_streak
-        FROM leetcode_users
-        WHERE username = %s
-    """, (username,))
+    SELECT last_total, last_active_date, current_streak,
+           total_7d_ago, total_30d_ago, last_updated, total
+    FROM leetcode_users
+    WHERE username = %s
+""", (username,))
+
     row = cursor.fetchone()
 
     last_total = row[0] if row else None
     last_active_date = row[1] if row else None
     current_streak = row[2] if row else 0
+    total_7d_ago = row[3] if row else None
+    total_30d_ago = row[4] if row else None
+    last_updated = row[5] if row else None
+    old_total = row[6] if row else None
+
 
     today = date.today()
 
@@ -196,12 +203,33 @@ def store_user_stats(username, stats):
         # no activity → streak breaks
         current_streak = 0
     # ----------------------------------------------
+        # -------- IMPROVEMENT SNAPSHOT LOGIC --------
+    now = datetime.now(timezone.utc)
+
+    if old_total is not None and last_updated:
+        days_gap = (now - last_updated).days
+
+        # 7-day snapshot
+        if total_7d_ago is None:
+            total_7d_ago = old_total
+        elif days_gap >= 7:
+            total_7d_ago = old_total
+
+        # 30-day snapshot
+        if total_30d_ago is None:
+            total_30d_ago = old_total
+        elif days_gap >= 30:
+            total_30d_ago = old_total
+    # -------------------------------------------
+
 
     cursor.execute("""
         INSERT INTO leetcode_users
         (username, ranking, reputation, easy, medium, hard, total,
-         last_updated, last_total, last_active_date, current_streak)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,CURRENT_TIMESTAMP,%s,%s,%s)
+        total_7d_ago, total_30d_ago,
+        last_updated, last_total, last_active_date, current_streak)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,
+                CURRENT_TIMESTAMP,%s,%s,%s)
         ON CONFLICT (username)
         DO UPDATE SET
             ranking = EXCLUDED.ranking,
@@ -210,6 +238,8 @@ def store_user_stats(username, stats):
             medium = EXCLUDED.medium,
             hard = EXCLUDED.hard,
             total = EXCLUDED.total,
+            total_7d_ago = EXCLUDED.total_7d_ago,
+            total_30d_ago = EXCLUDED.total_30d_ago,
             last_updated = CURRENT_TIMESTAMP,
             last_total = EXCLUDED.total,
             last_active_date = %s,
@@ -222,12 +252,15 @@ def store_user_stats(username, stats):
         solved.get("Medium", 0),
         solved.get("Hard", 0),
         new_total,
+        total_7d_ago,
+        total_30d_ago,
         new_total,
         last_active_date,
         current_streak,
         last_active_date,
         current_streak
     ))
+
 
     conn.commit()
     cursor.close()
@@ -385,6 +418,16 @@ def get_activity_status(last_active_date):
 
 # ---------- API ROUTES ---------- #
 
+
+def get_trend_status(delta):
+    if delta > 0:
+        return "improving"
+    elif delta == 0:
+        return "stagnant"
+    else:
+        return "declining"
+
+
 @app.route("/api/users")
 def api_users():
     try:
@@ -402,7 +445,8 @@ def api_users():
         if refresh_live:
             cursor.execute("""
     SELECT username, ranking, reputation, easy, medium, hard, total,
-           last_updated, current_streak, last_active_date
+       total_7d_ago, total_30d_ago,
+       last_updated, current_streak, last_active_date
     FROM leetcode_users
     ORDER BY total DESC
     LIMIT %s OFFSET %s
@@ -431,7 +475,7 @@ def api_users():
 """, (per_page, offset))
 
         users = []
-        
+
         for row in cursor.fetchall():
             easy = row[3] or 0
             medium = row[4] or 0
@@ -462,6 +506,22 @@ def api_users():
                 else:
                     last_solved_text = f"{days_ago} days ago"
             # --------------------------------
+            trend_7d = None
+            trend_30d = None
+
+            if row[7] is not None:
+                delta_7d = row[6] - row[7]
+                trend_7d = {
+                    "delta": delta_7d,
+                    "status": get_trend_status(delta_7d)
+                }
+
+            if row[8] is not None:
+                delta_30d = row[6] - row[8]
+                trend_30d = {
+                    "delta": delta_30d,
+                    "status": get_trend_status(delta_30d)
+                }
 
 
             users.append({
@@ -486,12 +546,15 @@ def api_users():
 
                 # timestamps
                 "last_updated": row[7].isoformat() if row[7] else None,
-
+                "user_trend": {
+                "7d": trend_7d,
+                "30d": trend_30d
+                 },
+                
                 # streak
                 "streak": row[8] or 0,
                 "last_active": row[9].isoformat() if row[9] else None,
-    })
-
+            })
 
         cursor.close()
         conn.close()
