@@ -468,11 +468,13 @@ def api_users():
 
         cursor.execute("""
     SELECT username, ranking, reputation, easy, medium, hard, total,
+           total_7d_ago, total_30d_ago,
            last_updated, current_streak, last_active_date
     FROM leetcode_users
     ORDER BY total DESC
     LIMIT %s OFFSET %s
 """, (per_page, offset))
+
 
         users = []
 
