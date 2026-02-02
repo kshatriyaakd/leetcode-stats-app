@@ -495,12 +495,13 @@ def api_users():
                 placement_level = "Placement Ready"
                 level_color = "green"
 
-            activity = get_activity_status(row[9])
-            # ---- Last solved text (UX) ----
-            if row[9] is None:
+            activity = get_activity_status(row[11])
+
+            if row[11] is None:
                 last_solved_text = "Never"
             else:
-                days_ago = (date.today() - row[9]).days
+                days_ago = (date.today() - row[11]).days
+
                 if days_ago == 0:
                     last_solved_text = "Today"
                 elif days_ago == 1:
@@ -547,15 +548,15 @@ def api_users():
                 "last_solved_text": last_solved_text,
 
                 # timestamps
-                "last_updated": row[7].isoformat() if row[7] else None,
+                "last_updated": row[9].isoformat() if row[9] else None,
                 "user_trend": {
                 "7d": trend_7d,
                 "30d": trend_30d
                  },
                 
                 # streak
-                "streak": row[8] or 0,
-                "last_active": row[9].isoformat() if row[9] else None,
+                "streak": row[10] or 0,
+                "last_active": row[11].isoformat() if row[11] else None,
             })
 
         cursor.close()
