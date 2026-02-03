@@ -43,11 +43,16 @@ query getUserProfile($username: String!) {
       reputation
     }
     submitStats {
-      acSubmissionNum {
-        difficulty
-        count
-      }
+        acSubmissionNum {
+            difficulty
+            count
+        }
+        totalSubmissionNum {
+            difficulty
+            count
+        }
     }
+
   }
 }
 """
@@ -90,15 +95,17 @@ def fetch_leetcode(username: str, retries=2, timeout=30):
 def transform_response(data):
     matched = (data or {}).get("data", {}).get("matchedUser")
     if not matched:
-        err_msg = (data or {}).get("errors")
-        if err_msg:
-            return {"ok": False, "error": f"GraphQL errors: {err_msg}"}
-        return {"ok": False, "error": "User not found or profile is private."}
+        return {"ok": False, "error": "User not found or private profile"}
 
     profile = matched.get("profile") or {}
-    ac_list = matched.get("submitStats", {}).get("acSubmissionNum") or []
-    solved = {item.get("difficulty"): item.get("count", 0)
-              for item in ac_list if "difficulty" in item}
+
+    submit_stats = matched.get("submitStats") or {}
+
+    ac_list = submit_stats.get("acSubmissionNum") or []
+    total_list = submit_stats.get("totalSubmissionNum") or []
+
+    solved = {i["difficulty"]: i["count"] for i in ac_list}
+    attempted = {i["difficulty"]: i["count"] for i in total_list}
 
     return {
         "ok": True,
@@ -111,7 +118,14 @@ def transform_response(data):
             "Medium": solved.get("Medium", 0),
             "Hard": solved.get("Hard", 0),
         },
+        "attempted": {
+            "All": attempted.get("All", 0),
+            "Easy": attempted.get("Easy", 0),
+            "Medium": attempted.get("Medium", 0),
+            "Hard": attempted.get("Hard", 0),
+        }
     }
+
 
 # ---------- DATABASE SETUP (PostgreSQL) ---------- #
 
@@ -143,12 +157,19 @@ def init_db():
             medium INTEGER DEFAULT 0,
             hard INTEGER DEFAULT 0,
             total INTEGER DEFAULT 0,
-            last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            attempted INTEGER DEFAULT 0,
+            total_7d_ago INTEGER,
+            total_30d_ago INTEGER,
+            last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_total INTEGER,
+            last_active_date DATE,
+            current_streak INTEGER DEFAULT 0
         )
     """)
     conn.commit()
     cursor.close()
     conn.close()
+
 
 
 def ensure_db():
@@ -167,16 +188,17 @@ def store_user_stats(username, stats):
     cursor = conn.cursor()
 
     solved = stats.get("solved", {})
+    attempted = stats.get("attempted", {})
+
     new_total = solved.get("All", 0)
+    attempted_total = stats.get("attempted", {}).get("All", 0)
 
-    # Fetch previous values
     cursor.execute("""
-    SELECT last_total, last_active_date, current_streak,
-           total_7d_ago, total_30d_ago, last_updated, total
-    FROM leetcode_users
-    WHERE username = %s
-""", (username,))
-
+        SELECT last_total, last_active_date, current_streak,
+               total_7d_ago, total_30d_ago, last_updated, total
+        FROM leetcode_users
+        WHERE username = %s
+    """, (username,))
     row = cursor.fetchone()
 
     last_total = row[0] if row else None
@@ -187,48 +209,29 @@ def store_user_stats(username, stats):
     last_updated = row[5] if row else None
     old_total = row[6] if row else None
 
-
     today = date.today()
 
-    # -------- FIXED ACTIVITY & STREAK LOGIC --------
+    # ✅ ACTIVITY + STREAK (correct)
     if last_total is not None and new_total > last_total:
-        # user ACTUALLY solved new problems
-        if last_active_date == today - timedelta(days=1):
-            current_streak += 1
-        else:
-            current_streak = 1
+        current_streak = current_streak + 1 if last_active_date == today - timedelta(days=1) else 1
         last_active_date = today
-
     elif last_active_date and (today - last_active_date).days > 1:
-        # no activity → streak breaks
         current_streak = 0
-    # ----------------------------------------------
-        # -------- IMPROVEMENT SNAPSHOT LOGIC --------
-    now = datetime.now(timezone.utc)
 
+    now = datetime.now(timezone.utc)
     if old_total is not None and last_updated:
         days_gap = (now - last_updated).days
-
-        # 7-day snapshot
-        if total_7d_ago is None:
+        if total_7d_ago is None or days_gap >= 7:
             total_7d_ago = old_total
-        elif days_gap >= 7:
-            total_7d_ago = old_total
-
-        # 30-day snapshot
-        if total_30d_ago is None:
+        if total_30d_ago is None or days_gap >= 30:
             total_30d_ago = old_total
-        elif days_gap >= 30:
-            total_30d_ago = old_total
-    # -------------------------------------------
-
 
     cursor.execute("""
         INSERT INTO leetcode_users
-        (username, ranking, reputation, easy, medium, hard, total,
-        total_7d_ago, total_30d_ago,
-        last_updated, last_total, last_active_date, current_streak)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,
+        (username, ranking, reputation, easy, medium, hard, total, attempted,
+         total_7d_ago, total_30d_ago,
+         last_updated, last_total, last_active_date, current_streak)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
                 CURRENT_TIMESTAMP,%s,%s,%s)
         ON CONFLICT (username)
         DO UPDATE SET
@@ -238,6 +241,7 @@ def store_user_stats(username, stats):
             medium = EXCLUDED.medium,
             hard = EXCLUDED.hard,
             total = EXCLUDED.total,
+            attempted = EXCLUDED.attempted,
             total_7d_ago = EXCLUDED.total_7d_ago,
             total_30d_ago = EXCLUDED.total_30d_ago,
             last_updated = CURRENT_TIMESTAMP,
@@ -252,6 +256,7 @@ def store_user_stats(username, stats):
         solved.get("Medium", 0),
         solved.get("Hard", 0),
         new_total,
+        attempted_total,
         total_7d_ago,
         total_30d_ago,
         new_total,
@@ -260,7 +265,6 @@ def store_user_stats(username, stats):
         last_active_date,
         current_streak
     ))
-
 
     conn.commit()
     cursor.close()
@@ -434,47 +438,47 @@ def api_users():
         page = int(request.args.get("page", 1))
         per_page = int(request.args.get("per_page", 12))
         offset = (page - 1) * per_page
-        refresh_live = request.args.get(
-            "live", "0").lower() in ("1", "true", "yes")
+        refresh_live = request.args.get("live", "0").lower() in ("1", "true", "yes")
 
         conn = get_db_connection()
         cursor = conn.cursor()
+
         cursor.execute("SELECT COUNT(*) FROM leetcode_users")
         total = cursor.fetchone()[0]
 
+        # ---------- LIVE REFRESH SELECT ----------
         if refresh_live:
             cursor.execute("""
-    SELECT username, ranking, reputation, easy, medium, hard, total,
-       total_7d_ago, total_30d_ago,
-       last_updated, current_streak, last_active_date
-    FROM leetcode_users
-    ORDER BY total DESC
-    LIMIT %s OFFSET %s
-""", (per_page, offset))
+                SELECT username, ranking, reputation, easy, medium, hard,
+                       total, attempted,
+                       total_7d_ago, total_30d_ago,
+                       last_updated, current_streak, last_active_date
+                FROM leetcode_users
+                ORDER BY total DESC
+                LIMIT %s OFFSET %s
+            """, (per_page, offset))
 
             rows = cursor.fetchall()
             for uname in [r[0] for r in rows[:10]]:
-                try:
-                    CACHE.pop(f"lc:{uname.lower()}", None)
-                    fetch_or_update_user(uname)
-                    time.sleep(0.5)
-                except Exception as e:
-                    app.logger.warning(
-                        "Live refresh failed for %s: %s", uname, e)
+                CACHE.pop(f"lc:{uname.lower()}", None)
+                fetch_or_update_user(uname)
+                time.sleep(0.5)
+
             cursor.close()
             conn.close()
             conn = get_db_connection()
             cursor = conn.cursor()
 
+        # ---------- FINAL DATA SELECT ----------
         cursor.execute("""
-    SELECT username, ranking, reputation, easy, medium, hard, total,
-           total_7d_ago, total_30d_ago,
-           last_updated, current_streak, last_active_date
-    FROM leetcode_users
-    ORDER BY total DESC
-    LIMIT %s OFFSET %s
-""", (per_page, offset))
-
+            SELECT username, ranking, reputation, easy, medium, hard,
+                   total, attempted,
+                   total_7d_ago, total_30d_ago,
+                   last_updated, current_streak, last_active_date
+            FROM leetcode_users
+            ORDER BY total DESC
+            LIMIT %s OFFSET %s
+        """, (per_page, offset))
 
         users = []
 
@@ -495,68 +499,62 @@ def api_users():
                 placement_level = "Placement Ready"
                 level_color = "green"
 
-            activity = get_activity_status(row[11])
+            activity = get_activity_status(row[12])
 
-            if row[11] is None:
+            # ----- Last solved text -----
+            if row[12] is None:
                 last_solved_text = "Never"
             else:
-                days_ago = (date.today() - row[11]).days
-
+                days_ago = (date.today() - row[12]).days
                 if days_ago == 0:
                     last_solved_text = "Today"
                 elif days_ago == 1:
                     last_solved_text = "Yesterday"
                 else:
                     last_solved_text = f"{days_ago} days ago"
-            # --------------------------------
+
+            # ----- Trend calculation -----
             trend_7d = None
             trend_30d = None
 
-            if row[7] is not None:
-                delta_7d = row[6] - row[7]
-                trend_7d = {
-                    "delta": delta_7d,
-                    "status": get_trend_status(delta_7d)
-                }
-
             if row[8] is not None:
-                delta_30d = row[6] - row[8]
-                trend_30d = {
-                    "delta": delta_30d,
-                    "status": get_trend_status(delta_30d)
-                }
+                delta_7d = row[6] - row[8]
+                trend_7d = {"delta": delta_7d, "status": get_trend_status(delta_7d)}
 
+            if row[9] is not None:
+                delta_30d = row[6] - row[9]
+                trend_30d = {"delta": delta_30d, "status": get_trend_status(delta_30d)}
 
+            # ✅ THIS IS WHERE total & attempted ARE ADDED
             users.append({
                 "username": row[0],
                 "ranking": row[1],
                 "reputation": row[2],
+
                 "easy": easy,
                 "medium": medium,
                 "hard": hard,
-                "total": row[6],
 
-                # placement
+                "total": row[6],        # ✅ Solved (AC)
+                "attempted": row[7],    # ✅ Attempted
+
                 "placement_score": placement_score,
                 "placement_level": placement_level,
                 "placement_color": level_color,
 
-                # activity
                 "activity_status": activity["label"],
                 "activity_color": activity["color"],
                 "activity_icon": activity["icon"],
                 "last_solved_text": last_solved_text,
 
-                # timestamps
-                "last_updated": row[9].isoformat() if row[9] else None,
                 "user_trend": {
-                "7d": trend_7d,
-                "30d": trend_30d
-                 },
-                
-                # streak
-                "streak": row[10] or 0,
-                "last_active": row[11].isoformat() if row[11] else None,
+                    "7d": trend_7d,
+                    "30d": trend_30d
+                },
+
+                "streak": row[11] or 0,
+                "last_active": row[12].isoformat() if row[12] else None,
+                "last_updated": row[10].isoformat() if row[10] else None,
             })
 
         cursor.close()
@@ -574,6 +572,7 @@ def api_users():
     except Exception as e:
         app.logger.exception("api_users error")
         return jsonify({"ok": False, "error": str(e)}), 500
+
 
 
 @app.route("/debug/db")
