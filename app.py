@@ -490,9 +490,10 @@ def api_users():
                 placement_level = "Placement Ready"
                 level_color = "green"
 
+            # ✅ FIXED INDEX
             activity = get_activity_status(row[11])
 
-                # ----- Last solved text -----
+            # ----- Last solved text -----
             if row[11] is None:
                 last_solved_text = "Never"
             else:
@@ -504,48 +505,42 @@ def api_users():
                 else:
                     last_solved_text = f"{days_ago} days ago"
 
-
             # ----- Trend calculation -----
             trend_7d = None
             trend_30d = None
 
-            if row[8] is not None:
-                delta_7d = row[6] - row[8]
+            if row[7] is not None:
+                delta_7d = row[6] - row[7]
                 trend_7d = {"delta": delta_7d, "status": get_trend_status(delta_7d)}
 
-            if row[9] is not None:
-                delta_30d = row[6] - row[9]
+            if row[8] is not None:
+                delta_30d = row[6] - row[8]
                 trend_30d = {"delta": delta_30d, "status": get_trend_status(delta_30d)}
 
-            # ✅ THIS IS WHERE total & attempted ARE ADDED
             users.append({
                 "username": row[0],
                 "ranking": row[1],
                 "reputation": row[2],
-
                 "easy": easy,
                 "medium": medium,
                 "hard": hard,
-
-                "total": row[6],        # ✅ Solved (AC)
+                "total": row[6],
                 "placement_score": placement_score,
                 "placement_level": placement_level,
                 "placement_color": level_color,
-
                 "activity_status": activity["label"],
                 "activity_color": activity["color"],
                 "activity_icon": activity["icon"],
                 "last_solved_text": last_solved_text,
-
                 "user_trend": {
                     "7d": trend_7d,
                     "30d": trend_30d
                 },
-
                 "streak": row[10] or 0,
                 "last_active": row[11].isoformat() if row[11] else None,
                 "last_updated": row[9].isoformat() if row[9] else None,
             })
+
 
         cursor.close()
         conn.close()
