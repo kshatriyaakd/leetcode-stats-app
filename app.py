@@ -277,7 +277,10 @@ def fetch_or_update_user(username):
     key = f"lc:{username.lower()}"
     cached = cache_get(key)
     if cached and cached.get("ok"):
+        # ⚠️ Still update DB in background
+        store_user_stats(username, cached)
         return cached
+
 
     try:
         data = fetch_leetcode(username)
@@ -370,7 +373,11 @@ def refresh_all_users_once():
     for uname in [r[0] for r in rows]:
         try:
             CACHE.pop(f"lc:{uname.lower()}", None)
-            fetch_or_update_user(uname)
+            data = fetch_leetcode(uname)
+            payload = transform_response(data)
+            if payload.get("ok"):
+                cache_set(f"lc:{uname.lower()}", payload)
+                store_user_stats(uname, payload)
             time.sleep(0.5)
         except Exception as e:
             app.logger.warning("Refresh failed for %s: %s", uname, e)
