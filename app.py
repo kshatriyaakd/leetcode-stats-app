@@ -98,14 +98,18 @@ def transform_response(data):
         return {"ok": False, "error": "User not found or private profile"}
 
     profile = matched.get("profile") or {}
-
     submit_stats = matched.get("submitStats") or {}
 
     ac_list = submit_stats.get("acSubmissionNum") or []
     total_list = submit_stats.get("totalSubmissionNum") or []
 
     solved = {i["difficulty"]: i["count"] for i in ac_list}
-    attempted = {i["difficulty"]: i["count"] for i in total_list}
+    total_subs = {i["difficulty"]: i["count"] for i in total_list}
+
+    attempted = {
+        k: max(total_subs.get(k, 0) - solved.get(k, 0), 0)
+        for k in ["All", "Easy", "Medium", "Hard"]
+    }
 
     return {
         "ok": True,
@@ -118,13 +122,9 @@ def transform_response(data):
             "Medium": solved.get("Medium", 0),
             "Hard": solved.get("Hard", 0),
         },
-        "attempted": {
-            "All": attempted.get("All", 0),
-            "Easy": attempted.get("Easy", 0),
-            "Medium": attempted.get("Medium", 0),
-            "Hard": attempted.get("Hard", 0),
-        }
+        "attempted": attempted
     }
+
 
 
 # ---------- DATABASE SETUP (PostgreSQL) ---------- #
@@ -186,8 +186,8 @@ ensure_db()
 def store_user_stats(username, stats):
     conn = get_db_connection()
     cursor = conn.cursor()
-    attempted_total = stats.get("attempted", {}).get("All", 0)
     solved = stats.get("solved", {})
+    attempted_total = stats["attempted"]["All"]
     attempted = stats.get("attempted", {})
 
     new_total = solved.get("All", 0)
