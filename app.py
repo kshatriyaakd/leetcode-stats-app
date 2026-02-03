@@ -186,12 +186,12 @@ ensure_db()
 def store_user_stats(username, stats):
     conn = get_db_connection()
     cursor = conn.cursor()
-
+    attempted_total = stats.get("attempted", {}).get("All", 0)
     solved = stats.get("solved", {})
     attempted = stats.get("attempted", {})
 
     new_total = solved.get("All", 0)
-    attempted_total = stats.get("attempted", {}).get("All", 0)
+    
 
     cursor.execute("""
         SELECT last_total, last_active_date, current_streak,
@@ -227,27 +227,27 @@ def store_user_stats(username, stats):
             total_30d_ago = old_total
 
     cursor.execute("""
-        INSERT INTO leetcode_users
-        (username, ranking, reputation, easy, medium, hard, total, attempted,
-         total_7d_ago, total_30d_ago,
-         last_updated, last_total, last_active_date, current_streak)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
-                CURRENT_TIMESTAMP,%s,%s,%s)
-        ON CONFLICT (username)
-        DO UPDATE SET
-            ranking = EXCLUDED.ranking,
-            reputation = EXCLUDED.reputation,
-            easy = EXCLUDED.easy,
-            medium = EXCLUDED.medium,
-            hard = EXCLUDED.hard,
-            total = EXCLUDED.total,
-            attempted = EXCLUDED.attempted,
-            total_7d_ago = EXCLUDED.total_7d_ago,
-            total_30d_ago = EXCLUDED.total_30d_ago,
-            last_updated = CURRENT_TIMESTAMP,
-            last_total = EXCLUDED.total,
-            last_active_date = %s,
-            current_streak = %s
+    INSERT INTO leetcode_users
+    (username, ranking, reputation, easy, medium, hard, total, attempted,
+    total_7d_ago, total_30d_ago,
+    last_updated, last_total, last_active_date, current_streak)
+    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+            CURRENT_TIMESTAMP,%s,%s,%s)
+    ON CONFLICT (username)
+    DO UPDATE SET
+        ranking = EXCLUDED.ranking,
+        reputation = EXCLUDED.reputation,
+        easy = EXCLUDED.easy,
+        medium = EXCLUDED.medium,
+        hard = EXCLUDED.hard,
+        total = EXCLUDED.total,
+        attempted = EXCLUDED.attempted,
+        total_7d_ago = EXCLUDED.total_7d_ago,
+        total_30d_ago = EXCLUDED.total_30d_ago,
+        last_updated = CURRENT_TIMESTAMP,
+        last_total = EXCLUDED.total,
+        last_active_date = %s,
+        current_streak = %s
     """, (
         username,
         stats.get("ranking"),
@@ -256,7 +256,7 @@ def store_user_stats(username, stats):
         solved.get("Medium", 0),
         solved.get("Hard", 0),
         new_total,
-        attempted_total,
+        attempted_total,          # 🔥 THIS WAS MISSING
         total_7d_ago,
         total_30d_ago,
         new_total,
@@ -265,6 +265,7 @@ def store_user_stats(username, stats):
         last_active_date,
         current_streak
     ))
+
 
     conn.commit()
     cursor.close()
