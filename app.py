@@ -42,20 +42,16 @@ query getUserProfile($username: String!) {
       ranking
       reputation
     }
-    submitStats {
-        acSubmissionNum {
-            difficulty
-            count
-        }
-        totalSubmissionNum {
-            difficulty
-            count
-        }
+    submitStatsGlobal {
+      acSubmissionNum {
+        difficulty
+        count
+      }
     }
-
   }
 }
 """
+
 
 # improved fetch with retries and better headers
 
@@ -93,27 +89,19 @@ def fetch_leetcode(username: str, retries=2, timeout=30):
 
 
 def transform_response(data):
-    matched = (data or {}).get("data", {}).get("matchedUser")
+    matched = data.get("data", {}).get("matchedUser")
     if not matched:
-        return {"ok": False, "error": "User not found or private profile"}
+        return {"ok": False}
 
     profile = matched.get("profile") or {}
-    submit_stats = matched.get("submitStats") or {}
+    stats = matched.get("submitStatsGlobal") or {}
 
-    ac_list = submit_stats.get("acSubmissionNum") or []
-    total_list = submit_stats.get("totalSubmissionNum") or []
-
+    ac_list = stats.get("acSubmissionNum", [])
     solved = {i["difficulty"]: i["count"] for i in ac_list}
-    total_subs = {i["difficulty"]: i["count"] for i in total_list}
-
-    attempted = {
-        k: max(total_subs.get(k, 0) - solved.get(k, 0), 0)
-        for k in ["All", "Easy", "Medium", "Hard"]
-    }
 
     return {
         "ok": True,
-        "username": matched.get("username"),
+        "username": matched["username"],
         "ranking": profile.get("ranking"),
         "reputation": profile.get("reputation"),
         "solved": {
@@ -121,9 +109,9 @@ def transform_response(data):
             "Easy": solved.get("Easy", 0),
             "Medium": solved.get("Medium", 0),
             "Hard": solved.get("Hard", 0),
-        },
-        "attempted": attempted
+        }
     }
+
 
 
 
@@ -157,7 +145,6 @@ def init_db():
             medium INTEGER DEFAULT 0,
             hard INTEGER DEFAULT 0,
             total INTEGER DEFAULT 0,
-            attempted INTEGER DEFAULT 0,
             total_7d_ago INTEGER,
             total_30d_ago INTEGER,
             last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -187,8 +174,6 @@ def store_user_stats(username, stats):
     conn = get_db_connection()
     cursor = conn.cursor()
     solved = stats.get("solved", {})
-    attempted_total = stats["attempted"]["All"]
-    attempted = stats.get("attempted", {})
 
     new_total = solved.get("All", 0)
     
@@ -228,10 +213,10 @@ def store_user_stats(username, stats):
 
     cursor.execute("""
     INSERT INTO leetcode_users
-    (username, ranking, reputation, easy, medium, hard, total, attempted,
+    (username, ranking, reputation, easy, medium, hard, total,
     total_7d_ago, total_30d_ago,
     last_updated, last_total, last_active_date, current_streak)
-    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,
+    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,
             CURRENT_TIMESTAMP,%s,%s,%s)
     ON CONFLICT (username)
     DO UPDATE SET
@@ -241,7 +226,6 @@ def store_user_stats(username, stats):
         medium = EXCLUDED.medium,
         hard = EXCLUDED.hard,
         total = EXCLUDED.total,
-        attempted = EXCLUDED.attempted,
         total_7d_ago = EXCLUDED.total_7d_ago,
         total_30d_ago = EXCLUDED.total_30d_ago,
         last_updated = CURRENT_TIMESTAMP,
@@ -256,7 +240,6 @@ def store_user_stats(username, stats):
         solved.get("Medium", 0),
         solved.get("Hard", 0),
         new_total,
-        attempted_total,          # 🔥 THIS WAS MISSING
         total_7d_ago,
         total_30d_ago,
         new_total,
@@ -458,7 +441,7 @@ def api_users():
         if refresh_live:
             cursor.execute("""
                 SELECT username, ranking, reputation, easy, medium, hard,
-                       total, attempted,
+                       total,
                        total_7d_ago, total_30d_ago,
                        last_updated, current_streak, last_active_date
                 FROM leetcode_users
@@ -480,7 +463,7 @@ def api_users():
         # ---------- FINAL DATA SELECT ----------
         cursor.execute("""
             SELECT username, ranking, reputation, easy, medium, hard,
-                   total, attempted,
+                   total,
                    total_7d_ago, total_30d_ago,
                    last_updated, current_streak, last_active_date
             FROM leetcode_users
@@ -544,8 +527,6 @@ def api_users():
                 "hard": hard,
 
                 "total": row[6],        # ✅ Solved (AC)
-                "attempted": row[7],    # ✅ Attempted
-
                 "placement_score": placement_score,
                 "placement_level": placement_level,
                 "placement_color": level_color,
