@@ -490,19 +490,20 @@ def api_users():
                 placement_level = "Placement Ready"
                 level_color = "green"
 
-            activity = get_activity_status(row[12])
+            activity = get_activity_status(row[11])
 
-            # ----- Last solved text -----
-            if row[12] is None:
+                # ----- Last solved text -----
+            if row[11] is None:
                 last_solved_text = "Never"
             else:
-                days_ago = (date.today() - row[12]).days
+                days_ago = (date.today() - row[11]).days
                 if days_ago == 0:
                     last_solved_text = "Today"
                 elif days_ago == 1:
                     last_solved_text = "Yesterday"
                 else:
                     last_solved_text = f"{days_ago} days ago"
+
 
             # ----- Trend calculation -----
             trend_7d = None
@@ -541,9 +542,9 @@ def api_users():
                     "30d": trend_30d
                 },
 
-                "streak": row[11] or 0,
-                "last_active": row[12].isoformat() if row[12] else None,
-                "last_updated": row[10].isoformat() if row[10] else None,
+                "streak": row[10] or 0,
+                "last_active": row[11].isoformat() if row[11] else None,
+                "last_updated": row[9].isoformat() if row[9] else None,
             })
 
         cursor.close()
