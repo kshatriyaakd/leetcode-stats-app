@@ -15,7 +15,7 @@ LEETCODE_GRAPHQL = "https://leetcode.com/graphql"
 
 # Simple cache (in-memory)
 CACHE = {}
-TTL_SECONDS = 600  # 10 min
+TTL_SECONDS = 120  # 10 min
 
 
 def cache_get(key):
@@ -256,30 +256,31 @@ def store_user_stats(username, stats):
 
 
 # ---------- CORE LOGIC ---------- #
-def fetch_or_update_user(username):
+def fetch_or_update_user(username, force_live=False):
     key = f"lc:{username.lower()}"
-    cached = cache_get(key)
-    if cached and cached.get("ok"):
-        # ⚠️ Still update DB in background
-        store_user_stats(username, cached)
-        return cached
 
+    # ✅ ONLY use cache for response, not for DB update
+    if not force_live:
+        cached = cache_get(key)
+        if cached and cached.get("ok"):
+            return cached
 
     try:
+        # 🔥 ALWAYS fetch fresh data when updating DB
         data = fetch_leetcode(username)
         payload = transform_response(data)
+
         if payload.get("ok"):
-            cache_set(key, payload)
             store_user_stats(username, payload)
+            cache_set(key, payload)
+
         return payload
+
     except requests.Timeout:
         return {"ok": False, "error": "LeetCode API timed out."}
     except requests.RequestException as e:
-        status = getattr(e.response, "status_code", None) if hasattr(
-            e, "response") else None
-        text = getattr(e.response, "text", None) if hasattr(
-            e, "response") else None
-        return {"ok": False, "error": f"Network error: {e} (status={status}) body={text}"}
+        status = getattr(e.response, "status_code", None) if hasattr(e, "response") else None
+        return {"ok": False, "error": f"Network error (status={status})"}
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
@@ -452,7 +453,7 @@ def api_users():
             rows = cursor.fetchall()
             for uname in [r[0] for r in rows[:10]]:
                 CACHE.pop(f"lc:{uname.lower()}", None)
-                fetch_or_update_user(uname)
+                fetch_or_update_user(uname, force_live=True)
                 time.sleep(0.5)
 
             cursor.close()
