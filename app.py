@@ -15,7 +15,7 @@ LEETCODE_GRAPHQL = "https://leetcode.com/graphql"
 
 # Simple cache (in-memory)
 CACHE = {}
-TTL_SECONDS = 120  # 10 min
+TTL_SECONDS = 120  # 2 min
 
 
 def cache_get(key):
@@ -358,13 +358,14 @@ def admin_delete_all():
 # ---------- REFRESH LOGIC ---------- #
 _refresh_lock = threading.Lock()
 
-def background_refresh_users(usernames, force_live=False):
+def background_refresh_users(usernames):
     def _run():
         for uname in usernames:
             try:
-                fetch_or_update_user(uname, force_live=force_live)
+                CACHE.pop(f"lc:{uname.lower()}", None)
+                fetch_or_update_user(uname)
             except Exception as e:
-                app.logger.warning(f"Background refresh failed for {uname}: {e}")
+                app.logger.error(f"Background refresh failed for {uname}: {e}")
     threading.Thread(target=_run, daemon=True).start()
 
 def refresh_all_users_once():
@@ -470,10 +471,10 @@ def api_users():
             """, (per_page, offset))
 
             rows = cursor.fetchall()
-            for (uname,) in rows[:10]:
-                CACHE.pop(f"lc:{uname.lower()}", None)
-                fetch_or_update_user(uname, force_live=True)
-                time.sleep(0.5)
+            usernames = [uname for (uname,) in rows[:10]]
+
+            # 🔥 background refresh (NON-BLOCKING)
+            background_refresh_users(usernames)
 
         # re-open connection to get fresh data
         cursor.close()
