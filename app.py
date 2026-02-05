@@ -452,30 +452,7 @@ def api_users():
         # total users count
         cursor.execute("SELECT COUNT(*) FROM leetcode_users")
         total = cursor.fetchone()[0]
-
-        # ============================================================
-        # 🔥 AUTO-REFRESH ON NORMAL PAGE LOAD (RESTORES OLD BEHAVIOR)
-        # ============================================================
-        if not refresh_live:
-            cursor.execute("""
-                SELECT username, last_updated
-                FROM leetcode_users
-                ORDER BY total DESC
-                LIMIT %s OFFSET %s
-            """, (per_page, offset))
-
-            rows = cursor.fetchall()
-            now = datetime.now(timezone.utc)
-
-            for uname, last_updated in rows:
-                # refresh if never updated OR stale (>5 minutes)
-                if not last_updated or (now - last_updated).seconds > 300:
-                    fetch_or_update_user(uname)
-                    time.sleep(0.3)
-
-        # ============================================================
-        # 🔥 FORCE LIVE REFRESH (ADMIN / live=1)
-        # ============================================================
+        
         if refresh_live:
             cursor.execute("""
                 SELECT username
